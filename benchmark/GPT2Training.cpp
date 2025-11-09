@@ -1,11 +1,12 @@
 #include "benchmark/benchmark.h"
 
+#include "../demos/cladtorch/llm.hpp"
+#include "../demos/cladtorch/llm_opt.hpp"
 #include <clad/Differentiator/CladtorchBuiltins.h>
 #include <clad/Differentiator/Differentiator.h>
 #include <clad/Differentiator/STLBuiltins.h>
-#include "../demos/cladtorch/llm.hpp"
-#include "../demos/cladtorch/llm_opt.hpp"
 
+// NOLINTBEGIN(cppcoreguidelines-*)
 class GPT2Optimized : public benchmark::Fixture {
 public:
   GPT2* model;
@@ -26,8 +27,8 @@ public:
     d_model = new GPT2(config);
 
     // Get batch size (B) and sequence length (T) from the benchmark state
-    int B = state.range(0);
-    int T = state.range(1);
+    int B = (int)state.range(0);
+    int T = (int)state.range(1);
 
     model->allocate(B, T);
     d_model->allocate(B, T);
@@ -50,7 +51,7 @@ public:
   }
 };
 
-float gpt2forw_opt(GPT2* model, const int* inputs, const int* targets) {
+static float gpt2forw_opt(GPT2* model, const int* inputs, const int* targets) {
   model->forward(inputs, targets);
   return model->mean_loss;
 }
@@ -70,7 +71,7 @@ BENCHMARK_DEFINE_F(GPT2Optimized,
     // The single training iteration:
     // forward pass (calculated as part of gradient), backward pass, and update
     grad.execute(model, inputs, targets, d_model);
-    model->update(d_model, 1e-3f);
+    model->update(d_model, /*lr=*/1e-3F);
   }
   state.SetLabel("B=" + std::to_string(B) + " T=" + std::to_string(T));
 }
@@ -126,7 +127,7 @@ public:
   }
 };
 
-float gpt2_loss(const gpt2::GPT2& model, const gpt2::ITensor& input,
+static float gpt2_loss(const gpt2::GPT2& model, const gpt2::ITensor& input,
                 const gpt2::ITensor& targets) {
   auto probs = model.forward(input);
   auto loss = cross_entropy_loss(probs, targets);
@@ -137,8 +138,8 @@ float gpt2_loss(const gpt2::GPT2& model, const gpt2::ITensor& input,
 BENCHMARK_DEFINE_F(GPT2Cladtorch,
                    FullTrainingIteration)(benchmark::State& state) {
   auto grad = clad::gradient(gpt2_loss, "0");
-  int B = state.range(0);
-  int T = state.range(1);
+  int B = (int)state.range(0);
+  int T = (int)state.range(1);
   const gpt2::ITensor inp({B, T}, inputs);
   const gpt2::ITensor tar({B, T}, targets);
   for (auto _ : state) {
@@ -151,7 +152,7 @@ BENCHMARK_DEFINE_F(GPT2Cladtorch,
     std::vector<gpt2::FTensor*> grads = d_model->get_parameter_tensors();
     for (size_t i = 0; i < params.size(); ++i) {
       // Update parameters with a learning rate of 1e-4
-      *params[i] += (*grads[i]) * -1e-3f;
+      *params[i] += (*grads[i]) * -1e-3F;
     }
   }
 
@@ -172,3 +173,4 @@ BENCHMARK_REGISTER_F(GPT2Cladtorch, FullTrainingIteration)
 
 // Define our main.
 BENCHMARK_MAIN();
+// NOLINTEND(cppcoreguidelines-*)
